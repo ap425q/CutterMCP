@@ -5,7 +5,7 @@
 
 
 # cutterMCP
-cutterMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
+cutterMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Cutter functionality to MCP clients.
 
 # Features
 MCP Server + Cutter Plugin
