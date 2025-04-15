@@ -27,7 +27,7 @@ First, download the latest release from this repository. This contains the Cutte
 1. Run Cutter
 2. Go to **Edit -> Preferences -> Plugins**
 3. Find the plugin directory location
-4. Copy `GhidraMCPPlugin.py` from the downloaded release and paste it inside the **python** folder
+4. Copy `CutterMCPPlugin.py` from the downloaded release and paste it inside the **python** folder
 5. Restart Cutter
 6. If successful, you’ll see the plugin under **Windows -> Plugins** and a new widget in the bottom panel
 
