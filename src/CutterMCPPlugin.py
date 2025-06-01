@@ -2,9 +2,11 @@ import cutter
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 from datetime import datetime
-from PySide2.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
-                              QPlainTextEdit, QPushButton)
-from PySide2.QtCore import Qt, QObject, Signal
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel,
+    QPlainTextEdit, QPushButton
+)
+from PySide6.QtCore import Qt, QObject, Signal
 from urllib.parse import urlparse, parse_qs
 
 class ServerSignals(QObject):
@@ -13,28 +15,27 @@ class ServerSignals(QObject):
 
 class MCPDockWidget(cutter.CutterDockWidget):
     def __init__(self, parent, signals):
-        super(MCPDockWidget, self).__init__(parent)
+        super().__init__(parent)
         self.setObjectName("MCPDockWidget")
         self.setWindowTitle("HTTP Server")
         self.signals = signals
-        
+
         container = QWidget()
-        layout = QVBoxLayout()
-        container.setLayout(layout)
-        
+        layout = QVBoxLayout(container)
+
         self.status_label = QLabel("🟢 HTTP Server: Running (Port 8000)")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
-        
+
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setPlaceholderText("HTTP Server logs will appear here...")
         layout.addWidget(self.log_view)
-        
+
         self.setWidget(container)
-        
+
         self.signals.log_signal.connect(self.log)
-    
+
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_view.appendPlainText(f"[{timestamp}] {message}")
@@ -51,12 +52,12 @@ class MCPPlugin(cutter.CutterPlugin):
         def log_message(self, format, *args):
             message = format % args
             self.server.parent.signals.log_signal.emit(message)
-        
+
         def do_GET(self):
             parsed = urlparse(self.path)
             path = parsed.path
             query = parse_qs(parsed.query)
-            
+
             if path == '/functions':
                 self.handle_functions(query)
             elif path == '/decompile':
@@ -73,11 +74,11 @@ class MCPPlugin(cutter.CutterPlugin):
                 self.handle_search_functions(query)
             else:
                 self.handle_root()
-        
+
         def do_POST(self):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
-            
+
             parsed = urlparse(self.path)
             if parsed.path == '/renameFunction':
                 self.handle_rename_function(post_data)
@@ -85,12 +86,11 @@ class MCPPlugin(cutter.CutterPlugin):
                 self.handle_set_decompiler_comment(post_data)
             else:
                 self.send_error(404, "Endpoint not found")
-        
+
         def handle_root(self):
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
-            
             response = """HTTP Server Endpoints:
 GET /functions - List all functions
 GET /decompile?addr=ADDR - Decompile function
@@ -103,7 +103,7 @@ GET /searchFunctions?query=NAME - Search functions
 POST /renameFunction - Rename a function
 POST /setDecompilerComment - Set decompiler comment"""
             self.wfile.write(response.encode('utf-8'))
-        
+
         def handle_rename_function(self, post_data):
             try:
                 params = parse_qs(post_data.decode('utf-8'))
@@ -116,14 +116,14 @@ POST /setDecompilerComment - Set decompiler comment"""
 
                 cutter.cmd(f"afn {new_name} @ {function_address}")
                 self.server.parent.signals.log_signal.emit(f"Renamed function at {function_address} to {new_name}")
-                
+
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(f"Successfully renamed function at {function_address} to {new_name}".encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error renaming function: {str(e)}")
-        
+
         def handle_set_decompiler_comment(self, post_data):
             try:
                 params = parse_qs(post_data.decode('utf-8'))
@@ -134,10 +134,9 @@ POST /setDecompilerComment - Set decompiler comment"""
                     self.send_error(400, "Both address and comment parameters are required")
                     return
 
-                # Set decompiler comment
                 cutter.cmd(f"CCu {comment} @ {address}")
                 self.server.parent.signals.log_signal.emit(f"Set decompiler comment at {address} to: {comment}")
-                
+
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
@@ -145,145 +144,111 @@ POST /setDecompilerComment - Set decompiler comment"""
             except Exception as e:
                 self.send_error(500, f"Error setting decompiler comment: {str(e)}")
 
-        
         def handle_functions(self, query):
             try:
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
-                # Get all functions using afl
                 funcs = cutter.cmd("aflq").splitlines()
-                
-                # Apply pagination
                 paginated_funcs = funcs[offset:offset+limit]
                 response = "\n".join(paginated_funcs)
-                
                 self.server.parent.signals.log_signal.emit(f"Served {len(paginated_funcs)} functions")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(response.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
-        
+
         def handle_decompile(self, query):
             try:
                 addr = query.get('addr', [''])[0]
                 if not addr:
                     self.send_error(400, "Address parameter is required")
                     return
-                
-                # Decompile using pdd
                 decompiled = cutter.cmd(f"pdg @ {addr}")
                 self.server.parent.signals.log_signal.emit(f"Decompiled function at {addr}")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(decompiled.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
+
         def handle_segments(self, query):
             try:
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
-                # Get segments using iS
                 segments = cutter.cmd("iS").splitlines()
                 result = segments[offset:offset+limit]
                 response = "\n".join(result)
-                
                 self.server.parent.signals.log_signal.emit(f"Served {len(result)} segments")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(response.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
+
         def handle_imports(self, query):
             try:
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
-                # Get imports using ii
                 imports = cutter.cmd("ii").splitlines()
                 result = imports[offset:offset+limit]
                 response = "\n".join(result)
-                
                 self.server.parent.signals.log_signal.emit(f"Served {len(result)} imports")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(response.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
+
         def handle_exports(self, query):
             try:
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
-                # Get exports using iE
                 exports = cutter.cmd("iE").splitlines()
                 result = exports[offset:offset+limit]
                 response = "\n".join(result)
-                
                 self.server.parent.signals.log_signal.emit(f"Served {len(result)} exports")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(response.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
+
         def handle_data(self, query):
             try:
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
-                # Get defined data using pd
-                data = cutter.cmd("pd 1000").splitlines()  # Adjust count as needed
+                data = cutter.cmd("pd 1000").splitlines()
                 result = data[offset:offset+limit]
                 response = "\n".join(result)
-                
                 self.server.parent.signals.log_signal.emit(f"Served {len(result)} data items")
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(response.encode('utf-8'))
             except Exception as e:
                 self.send_error(500, f"Error: {str(e)}")
-        
+
         def handle_search_functions(self, query):
             try:
                 search_term = query.get('query', [''])[0]
                 offset = int(query.get('offset', [0])[0])
                 limit = int(query.get('limit', [100])[0])
-                
                 if not search_term:
                     self.send_error(400, "Search term is required")
                     return
-                
-                # Use afl~<term> command for more efficient searching
                 search_results = cutter.cmd(f"afl~{search_term}").splitlines()
-                
-                # Apply pagination
                 paginated_results = search_results[offset:offset+limit]
                 response = "\n".join(paginated_results)
-                
                 self.server.parent.signals.log_signal.emit(
                     f"Found {len(search_results)} functions matching '{search_term}', "
                     f"returning {len(paginated_results)}"
                 )
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
@@ -295,11 +260,8 @@ POST /setDecompilerComment - Set decompiler comment"""
         pass
 
     def setupInterface(self, main):
-        # Create dock widget
         self.dock_widget = MCPDockWidget(main, self.signals)
         main.addPluginDockWidget(self.dock_widget)
-        
-        # Start server automatically
         self.start_server()
 
     def start_server(self):
