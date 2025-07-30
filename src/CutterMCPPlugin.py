@@ -72,6 +72,18 @@ class MCPPlugin(cutter.CutterPlugin):
                 self.handle_data(query)
             elif path == '/searchFunctions':
                 self.handle_search_functions(query)
+            elif path == '/libraries':
+                self.handle_libraries(query)
+            elif path == '/headers':
+                self.handle_headers(query)
+            elif path == '/showFunctionDetails':
+                self.handle_show_function_details(query)
+            elif path == '/getFunctionPrototype':
+                self.handle_get_function_prototype(query)
+            elif path == '/xrefsTo':
+                self.handle_xrefs_to(query)
+            elif path == '/disassembleFunction':
+                self.handle_disassemble_function(query)
             else:
                 self.handle_root()
 
@@ -84,6 +96,8 @@ class MCPPlugin(cutter.CutterPlugin):
                 self.handle_rename_function(post_data)
             elif parsed.path == '/setDecompilerComment':
                 self.handle_set_decompiler_comment(post_data)
+            elif parsed.path == '/setFunctionPrototype':
+                self.handle_set_function_prototype(post_data)
             else:
                 self.send_error(404, "Endpoint not found")
 
@@ -99,9 +113,16 @@ GET /imports - List imports
 GET /exports - List exports
 GET /data - List defined data
 GET /searchFunctions?query=NAME - Search functions
+GET /libraries - List shared libraries
+GET /headers - Show header information
+GET /showFunctionDetails?addr=ADDR - Show details about function
+GET /getFunctionPrototype?addr=ADDR - Get function signature
+GET /xrefsTo?addr=ADDR - List code references
+GET /disassembleFunction?addr=ADDR - Disassemble function
 
 POST /renameFunction - Rename a function
-POST /setDecompilerComment - Set decompiler comment"""
+POST /setDecompilerComment - Set decompiler comment
+POST /setFunctionPrototype - Set function signature"""
             self.wfile.write(response.encode('utf-8'))
 
         def handle_rename_function(self, post_data):
@@ -256,6 +277,116 @@ POST /setDecompilerComment - Set decompiler comment"""
             except Exception as e:
                 self.send_error(500, f"Error searching functions: {str(e)}")
 
+        def handle_libraries(self, query):
+            try:
+                offset = int(query.get('offset', [0])[0])
+                limit = int(query.get('limit', [100])[0])
+                libraries = cutter.cmd("ilq").splitlines()
+                result = libraries[offset:offset+limit]
+                response = "\n".join(result)
+                self.server.parent.signals.log_signal.emit(f"Served {len(result)} libraries")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(response.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_headers(self, query):
+            try:
+                offset = int(query.get('offset', [0])[0])
+                limit = int(query.get('limit', [100])[0])
+                headers = cutter.cmd("i;iH").splitlines()
+                result = headers[offset:offset+limit]
+                response = "\n".join(result)
+                self.server.parent.signals.log_signal.emit(f"Served {len(result)} headers")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(response.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_show_function_details(self, query):
+            try:
+                addr = query.get('addr', [''])[0]
+                if not addr:
+                    self.send_error(400, "Address parameter is required")
+                    return
+                functionDetail = cutter.cmd(f"afi @ {addr}")
+                self.server.parent.signals.log_signal.emit(f"Served details about function at {addr}")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(functionDetail.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_get_function_prototype(self, query):
+            try:
+                addr = query.get('addr', [''])[0]
+                if not addr:
+                    self.send_error(400, "Address parameter is required")
+                    return
+                functionPrototype = cutter.cmd(f"afs @ {addr}")
+                self.server.parent.signals.log_signal.emit(f"Served signature of function at {addr}")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(functionPrototype.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_xrefs_to(self, query):
+            try:
+                addr = query.get('addr', [''])[0]
+                if not addr:
+                    self.send_error(400, "Address parameter is required")
+                    return
+                xrefsTo = cutter.cmd(f"axt @ {addr}")
+                self.server.parent.signals.log_signal.emit(f"Served references of code at {addr}")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(xrefsTo.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_disassemble_function(self, query):
+            try:
+                addr = query.get('addr', [''])[0]
+                if not addr:
+                    self.send_error(400, "Address parameter is required")
+                    return
+                disassembledFunction = cutter.cmd(f"pdf @ {addr}")
+                self.server.parent.signals.log_signal.emit(f"Disassembled function at {addr}")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(disassembledFunction.encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+
+        def handle_set_function_prototype(self, post_data):
+            try:
+                params = parse_qs(post_data.decode('utf-8'))
+                address = params.get('address', [''])[0]
+                description = params.get('description', [''])[0]
+
+                if not address or not description:
+                    self.send_error(400, "Both address and description parameters are required")
+                    return
+
+                cutter.cmd(f"afs {description} @ {address}")
+                self.server.parent.signals.log_signal.emit(f"Set function signature at {address} to: {description}")
+
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(f"Successfully set function signature at {address}".encode('utf-8'))
+            except Exception as e:
+                self.send_error(500, f"Error setting function signature: {str(e)}")
+                                
     def setupPlugin(self):
         pass
 
@@ -282,8 +413,15 @@ POST /setDecompilerComment - Set decompiler comment"""
             self.signals.log_signal.emit("GET /exports - List exports")
             self.signals.log_signal.emit("GET /data - List defined data")
             self.signals.log_signal.emit("GET /searchFunctions - Search functions by name")
+            self.signals.log_signal.emit("GET /libraries - List libraries")
+            self.signals.log_signal.emit("GET /headers - Show headers")
+            self.signals.log_signal.emit("GET /showFunctionDetails - Show details about function")
+            self.signals.log_signal.emit("GET /getFunctionPrototype - Show signature of function")
+            self.signals.log_signal.emit("GET /xrefsTo - List code references")
+            self.signals.log_signal.emit("GET /disassembleFunction - Disassemble function")
             self.signals.log_signal.emit("POST /renameFunction - Rename a function")
             self.signals.log_signal.emit("POST /setDecompilerComment - Set decompiler comment")
+            self.signals.log_signal.emit("POST /setFunctionPrototype - Set signature of function")
             self.server.serve_forever()
 
         self.server_thread = threading.Thread(target=run_server)
