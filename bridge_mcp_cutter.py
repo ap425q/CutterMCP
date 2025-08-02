@@ -105,7 +105,54 @@ def set_decompiler_comment(address: str, comment: str) -> str:
     """
     return safe_post("set_decompiler_comment", {"address": address, "comment": comment})
 
+@mcp.tool()
+def list_libraries(offset: int = 0, limit: int = 100) -> list:
+    """
+    List shared libraries used in the binary.
+    """
+    return safe_get("libraries", {"offset": offset, "limit": limit})
 
+@mcp.tool()
+def show_headers(offset: int = 0, limit: int = 100) -> list:
+    """
+    Show header information in the binary.
+    """
+    return safe_get("headers", {"offset": offset, "limit": limit})
 
+@mcp.tool()
+def show_function_detail(address: str) -> str:
+    """
+    Show details about function at the given address.
+    """
+    return "\n".join(safe_get("showFunctionDetails", {"addr": address}))
+
+@mcp.tool()
+def get_function_prototype(address: str) -> str:
+    """
+    Get function signature at the given address.
+    """
+    return "\n".join(safe_get("getFunctionPrototype", {"addr": address}))
+
+@mcp.tool()
+def xrefs_to(address: str) -> str:
+    """
+    List code references to the given address.
+    """
+    return "\n".join(safe_get("xrefsTo", {"addr": address}))
+
+@mcp.tool()
+def disassemble_function(address: str) -> str:
+    """
+    Disassemble a function at the given address.
+    """
+    return "\n".join(safe_get("disassembleFunction", {"addr": address}))
+
+@mcp.tool()
+def set_function_prototype(address: str, description: str) -> str:
+    """
+    Rename a function by its address.
+    """
+    return safe_post("setFunctionPrototype", {"address": address, "description": description})
+            
 if __name__ == "__main__":
     mcp.run()
